@@ -31,6 +31,9 @@ with open('pickled_trainDict', 'rb') as myPickle:
 with open('pickled_testDict', 'rb') as myPickle:
       testDict = pickle.load(myPickle)
 
+with open('pickled_valDict', 'rb') as myPickle:
+      valDict = pickle.load(myPickle)
+
 # big help, another base of this code is: https://gist.github.com/fchollet/0830affa1f7f19fd47b06d4cf89ed44d
 #big help, the base of this code is: https://github.com/tensorflow/datasets/blob/master/tensorflow_datasets/datasets/oxford_iiit_pet/oxford_iiit_pet_dataset_builder.py
 # code base is also: https://pytorch.org/tutorials/beginner/introyt/trainingyt.html
@@ -44,82 +47,66 @@ def main():
 
   # defining some important variables
   EPOCHS = 20
-  BATCH_SIZE = 256 # I was told to start with batch-size of 8
+  BATCH_SIZE = 2 # I was told to start with batch-size of 8
   # learned how to do this conversion from: https://www.datascienceweekly.org/tutorials/convert-list-to-tensorflow-tensor
   #I modified the following code to turn my folders of images into datasets
   #https://stackoverflow.com/questions/76679892/folder-structure-for-tensorflow-image-segmentation
-  dataset_train_indices = list(range(264974))
-  dataset_train_indices = np.random.shuffle(dataset_train_indices)
-
-  dataset_test_indices = list(range(89167))
-  dataset_test_indices = np.random.shuffle(dataset_test_indices)
-
-  #train_sampler = SubsetRandomSampler(dataset_train_indices)
-  #test_sampler = SubsetRandomSampler(dataset_test_indices)
-
-  train_dataset = CustomImageDataset(masks_dir='./LULC-pngs/train/maskTiles/', img_dir='./LULC-pngs/train/imageTiles/') #iterable = generator(264974))
-  validation_dataset = CustomImageDataset(masks_dir='./LULC-pngs/test/maskTiles/', img_dir='./LULC-pngs/test/imageTiles/') #iterable = generator(89167)
+  
+  train_dataset = CustomImageDataset(masks_dir='./LULC-pngs/train/maskTiles/', img_dir='./LULC-pngs/train/imageTiles/')
+  validation_dataset = CustomImageDataset(masks_dir='./LULC-pngs/test/maskTiles/', img_dir='./LULC-pngs/test/imageTiles/')
+  #test_dataset = CustomImageDataset(masks_dir='./Subset/test/maskTiles/', img_dir='./Subset/test/imageTiles/')
 
 # train_loader returns batches of training data. See how train_loader is used in t
 # he Trainer class later
   train_loader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, drop_last = True, pin_memory=True)
   validation_loader = DataLoader(dataset=validation_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, drop_last = True, pin_memory=True)
 
-
-#   for data, target in train_loader:
-#     # Move data to the appropriate device (e.g., GPU)
-#     if torch.cuda.is_available():
-#         data, target = data.cuda(), target.cuda()
-
-
-
-  dataiter = iter(train_loader)
-  learning_rate = 1/50
+  #dataiter = iter(train_loader)
+  learning_rate = 1/500
   
-#     output = model(data)
-
-
-#   model = Model()
-#   model = model.to(device)
-
-#   model = Model()
- 
 
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#   device='cpu'
   print("Using device:", device)
   
   model = Model().to(device)  
 
-#   if torch.cuda.is_available():
-# #     model.cuda()  # This moves all model parameters to the GPU
-    # torch.set_default_tensor_type('torch.cuda.FloatTensor')
-    # print('modifying trainloader')
-    # for data, target in train_loader:
-    #     data, target = data.cuda(), target.cuda()
-    # print('modifying validationloader')
-    # for data, target in validation_loader:
-    #     data, target = data.cuda(), target.cuda()
-
-
   opt = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
   loss_function = nn.CrossEntropyLoss()
 
-  trainer = Trainer(net=model, optim=opt, loss_function=loss_function, train_loader=dataiter, device=device)
-  
   timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
   writer = SummaryWriter('runs/satellite_trainer_{}'.format(timestamp))
   epoch_number = 0
 
-  avg_losses = []
   best_vloss = 100000
 
+  i = 0
   for epoch in range(EPOCHS):
-    try:
+    #try:
         model.train(True)
-        avg_loss = trainer.train_epoch()
-        avg_losses.append(avg_loss)
-        print("epoch [%d]: loss %.3f" % (epoch+1, avg_losses[-1]))
+        dataiter = iter(train_loader)
+        avg_loss = 0
+        #for batch in dataiter:
+        for data in tqdm.tqdm(dataiter):
+            X = data[0]
+            y = data[1]
+
+            X, y = X.to(device), y.to(device)
+
+            y = torch.squeeze(y, dim=1)
+            
+            opt.zero_grad()
+            output = model(X)
+            loss = loss_function(output, y)
+            loss.requires_grad = True
+            # solved this issue with: https://stackoverflow.com/questions/61808965/pytorch-runtimeerror-element-0-of-tensors-does-not-require-grad-and-does-not-ha
+            loss.backward()
+            opt.step()
+            avg_loss += loss
+            i+=1
+        # print out the epoch 
+        avg_loss = avg_loss/i
+        i=0
+        print("epoch [%d]: training loss %.3f" % (epoch+1, avg_loss))
 
         running_validation_loss = 0.0
         # Set the model to evaluation mode, disabling dropout and using population
@@ -153,13 +140,14 @@ def main():
             model_path = 'model_{}_{}'.format(timestamp, epoch_number)
             torch.save(model.state_dict(), model_path)
 
+        #next(dataiter)
         epoch_number += 1
     
-    except KeyboardInterrupt:
+   # except KeyboardInterrupt:
         # sve model and exit
-        print("can't wait to finish huh? well here's ur model for u")
-        model_path = 'model_{}_{}'.format(timestamp, epoch_number)
-        torch.save(model.state_dict(), model_path)
+    #    print("can't wait to finish huh? well here's ur model for u")
+    #    model_path = 'model_{}_{}'.format(timestamp, epoch_number)
+    #    torch.save(model.state_dict(), model_path)
 
 
 
@@ -172,10 +160,6 @@ def main():
   #Aba1Prediction.save("Aba1_0_0_Predicted.png")
 
   print("I made it to the end of the code!")
-
-def generator(numItems):
-    for i in range(numItems):
-        yield i
         
 
 class Model(nn.Module):
@@ -281,55 +265,6 @@ class Model(nn.Module):
 
         return out
 
-
-class Trainer():
-    def __init__(self, net=None, optim=None, loss_function=None, train_loader=None, device=None):
-        self.net = net
-        self.optim = optim
-        self.loss_function = loss_function
-        self.train_loader = train_loader
-        self.device = device
-
-    def train_epoch(self):
-        epoch_loss = 0.0
-        epoch_steps = 0
-        for data in tqdm.tqdm(self.train_loader):
-            # Moving this batch to GPU
-            # Note that X has shape (batch_size, number of channels, height, width)
-            # which should be equal to (8,3,128,128) since our default batch_size = 8 and
-            # the image has 3 channels
-            #X, y = next(self.train_loader)
-
-            # make sure cuda
-            # if torch.cuda.is_available():
-            #     data = data.cuda()
-            # else:
-            #     print("CUDA not available")
-
-            X = data[0]
-
-            #X = transforms.to_tensor(X)
-            y = data[1]
-
-            X, y = X.to(self.device), y.to(self.device)
-
-            #y = transforms.to_tensor(y)
-
-            y = torch.squeeze(y, dim=1)
-
-            self.optim.zero_grad()
-            output = self.net(X)
-            loss = self.loss_function(output, y)
-            loss.requires_grad = True
-            # solved this issue with: https://stackoverflow.com/questions/61808965/pytorch-runtimeerror-element-0-of-tensors-does-not-require-grad-and-does-not-ha
-            loss.backward()
-            self.optim.step()
-
-            epoch_loss += loss.item()
-            epoch_steps += 1   
-        return epoch_loss/epoch_steps
-
-
 class CustomImageDataset(Dataset):
     def __init__(self, masks_dir, img_dir, transform=None, target_transform=None): #removed iterable
         self.img_labels = masks_dir
@@ -337,10 +272,6 @@ class CustomImageDataset(Dataset):
         self.transform = transform
         self.target_transform = target_transform
         i=0
-        #self.iterable = iterable
-
-    #def __iter__(self):
-        #return self.iterable
 
     def __len__(self):
         i=0
@@ -349,12 +280,10 @@ class CustomImageDataset(Dataset):
         return i
 
     def __getitem__(self, idx): # idx might be necessary
-        if (self.img_labels[:16] == './LULC-pngs/test'):
+        if (self.img_labels[:19] == './LULC-pngs/test'):
             name = testDict[idx]
         else:
             name = trainDict[idx]
-        # print(idx)
-        # print(name)
         img_path = self.img_dir+name+'RGB.png'
         image = read_image(img_path)
         image = image.float()
