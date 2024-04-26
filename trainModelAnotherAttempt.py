@@ -2,7 +2,7 @@ import pickle
 from IPython.display import clear_output
 import matplotlib.pyplot as plt
 import numpy as np
-from City import City
+# from City import City
 from PIL import Image
 import ssl
 # to understand the ImageDataGenerator, I used this website: https://medium.com/analytics-vidhya/write-your-own-custom-data-generator-for-tensorflow-keras-1252b64e41c3
@@ -39,31 +39,73 @@ def main():
   np.random.seed(0)
   torch.manual_seed(0)
   
-  device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#   device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
   # defining some important variables
   EPOCHS = 20
-  BATCH_SIZE = 16 # I was told to start with batch-size of 8
+  BATCH_SIZE = 256 # I was told to start with batch-size of 8
   # learned how to do this conversion from: https://www.datascienceweekly.org/tutorials/convert-list-to-tensorflow-tensor
   #I modified the following code to turn my folders of images into datasets
   #https://stackoverflow.com/questions/76679892/folder-structure-for-tensorflow-image-segmentation
+  dataset_train_indices = list(range(264974))
+  dataset_train_indices = np.random.shuffle(dataset_train_indices)
+
+  dataset_test_indices = list(range(89167))
+  dataset_test_indices = np.random.shuffle(dataset_test_indices)
+
+  #train_sampler = SubsetRandomSampler(dataset_train_indices)
+  #test_sampler = SubsetRandomSampler(dataset_test_indices)
 
   train_dataset = CustomImageDataset(masks_dir='./LULC-pngs/train/maskTiles/', img_dir='./LULC-pngs/train/imageTiles/') #iterable = generator(264974))
   validation_dataset = CustomImageDataset(masks_dir='./LULC-pngs/test/maskTiles/', img_dir='./LULC-pngs/test/imageTiles/') #iterable = generator(89167)
 
 # train_loader returns batches of training data. See how train_loader is used in t
 # he Trainer class later
-  train_loader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, drop_last = True)
-  validation_loader = DataLoader(dataset=validation_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, drop_last = True)
+  train_loader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, drop_last = True, pin_memory=True)
+  validation_loader = DataLoader(dataset=validation_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, drop_last = True, pin_memory=True)
+
+
+#   for data, target in train_loader:
+#     # Move data to the appropriate device (e.g., GPU)
+#     if torch.cuda.is_available():
+#         data, target = data.cuda(), target.cuda()
+
+
+
   dataiter = iter(train_loader)
   learning_rate = 1/50
+  
+#     output = model(data)
 
-  model = Model()
-  model = model.to(device)
+
+#   model = Model()
+#   model = model.to(device)
+
+#   model = Model()
+ 
+
+  device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#   device='cpu'
+  print("Using device:", device)
+  
+  model = Model().to(device)  
+
+#   if torch.cuda.is_available():
+# #     model.cuda()  # This moves all model parameters to the GPU
+    # torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    # print('modifying trainloader')
+    # for data, target in train_loader:
+    #     data, target = data.cuda(), target.cuda()
+    # print('modifying validationloader')
+    # for data, target in validation_loader:
+    #     data, target = data.cuda(), target.cuda()
+
+
   opt = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
   loss_function = nn.CrossEntropyLoss()
 
-  trainer = Trainer(net=model, optim=opt, loss_function=loss_function, train_loader=dataiter)
+  trainer = Trainer(net=model, optim=opt, loss_function=loss_function, train_loader=dataiter, device=device)
   
   timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
   writer = SummaryWriter('runs/satellite_trainer_{}'.format(timestamp))
@@ -73,43 +115,53 @@ def main():
   best_vloss = 100000
 
   for epoch in range(EPOCHS):
-      model.train(True)
-      avg_loss = trainer.train_epoch()
-      avg_losses.append(avg_loss)
-      print("epoch [%d]: loss %.3f" % (epoch+1, avg_losses[-1]))
+    try:
+        model.train(True)
+        avg_loss = trainer.train_epoch(epoch)
+        avg_losses.append(avg_loss)
+        print("epoch [%d]: loss %.3f" % (epoch+1, avg_losses[-1]))
 
-      running_validation_loss = 0.0
-      # Set the model to evaluation mode, disabling dropout and using population
-      # statistics for batch normalization.
-      model.eval()
+        running_validation_loss = 0.0
+        # Set the model to evaluation mode, disabling dropout and using population
+        # statistics for batch normalization.
+        model.eval()
 
-     # Disable gradient computation and reduce memory consumption.
-      with torch.no_grad():
-          for i, val_data in enumerate(validation_loader):
-              valInputs = X = val_data[0]
-              valLabels = val_data[1]
-              valLabels = torch.squeeze(valLabels, dim=1)
-              valOutputs = model(valInputs)
-              valLoss = loss_function(valOutputs, valLabels)
-              running_validation_loss += valLoss
+        # Disable gradient computation and reduce memory consumption.
+        with torch.no_grad():
+            for i, val_data in enumerate(validation_loader):
+                valInputs = val_data[0]
+                valLabels = val_data[1]
+                valInputs, valLabels = valInputs.to(device), valLabels.to(device)
+                valLabels = torch.squeeze(valLabels, dim=1)
+                valOutputs = model(valInputs)
+                valLoss = loss_function(valOutputs, valLabels)
+                running_validation_loss += valLoss
 
-      avg_vloss = running_validation_loss / (i + 1)
-      print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
+        avg_vloss = running_validation_loss / (i + 1)
+        print('LOSS train {} valid {}'.format(avg_loss, avg_vloss))
 
-    # Log the running loss averaged per batch
-    # for both training and validation
-      writer.add_scalars('Training vs. Validation Loss',
-                      { 'Training' : avg_loss, 'Validation' : avg_vloss },
-                      epoch_number + 1)
-      writer.flush()
+        # Log the running loss averaged per batch
+        # for both training and validation
+        writer.add_scalars('Training vs. Validation Loss',
+                        { 'Training' : avg_loss, 'Validation' : avg_vloss },
+                        epoch_number + 1)
+        writer.flush()
 
-    # Track best performance, and save the model's state
-      if avg_vloss < best_vloss:
-          best_vloss = avg_vloss
-          model_path = 'model_{}_{}'.format(timestamp, epoch_number)
-          torch.save(model.state_dict(), model_path)
+        # Track best performance, and save the model's state
+        if avg_vloss < best_vloss:
+            best_vloss = avg_vloss
+            model_path = 'model_{}_{}'.format(timestamp, epoch_number)
+            torch.save(model.state_dict(), model_path)
 
-      epoch_number += 1
+        epoch_number += 1
+    
+    except KeyboardInterrupt:
+        # sve model and exit
+        print("can't wait to finish huh? well here's ur model for u")
+        model_path = 'model_{}_{}'.format(timestamp, epoch_number)
+        torch.save(model.state_dict(), model_path)
+
+
 
 # [58, 189, 234, 179, 188, 106, 81, 74, 0, 134] these are the values of the grayscale integer pixels in my grayscale masks
   
@@ -174,6 +226,8 @@ class Model(nn.Module):
         self.final = nn.Softmax(dim=0)
 
     def forward(self, x):
+        # x = x.cuda()  # Move input tensor to GPU
+
         xe11 = relu(self.e11(x))
         xe12 = relu(self.e12(xe11))
         xp1 = self.pool1(xe12)
@@ -229,13 +283,16 @@ class Model(nn.Module):
 
 
 class Trainer():
-    def __init__(self, net=None, optim=None, loss_function=None, train_loader=None):
+    def __init__(self, net=None, optim=None, loss_function=None, train_loader=None, device=None):
         self.net = net
         self.optim = optim
         self.loss_function = loss_function
         self.train_loader = train_loader
+        self.device = device
 
-    def train_epoch(self):
+    def train_epoch(self, epoch):
+        print("epoch:")
+        print(epoch)
         epoch_loss = 0.0
         epoch_steps = 0
         for data in tqdm.tqdm(self.train_loader):
@@ -244,10 +301,19 @@ class Trainer():
             # which should be equal to (8,3,128,128) since our default batch_size = 8 and
             # the image has 3 channels
             #X, y = next(self.train_loader)
+
+            # make sure cuda
+            # if torch.cuda.is_available():
+            #     data = data.cuda()
+            # else:
+            #     print("CUDA not available")
+
             X = data[0]
 
             #X = transforms.to_tensor(X)
             y = data[1]
+
+            X, y = X.to(self.device), y.to(self.device)
 
             #y = transforms.to_tensor(y)
 
@@ -289,6 +355,8 @@ class CustomImageDataset(Dataset):
             name = testDict[idx]
         else:
             name = trainDict[idx]
+        # print(idx)
+        # print(name)
         img_path = self.img_dir+name+'RGB.png'
         image = read_image(img_path)
         image = image.float()
@@ -326,7 +394,7 @@ def correctVals(arr):
           elif (val == 134):
               arr[0][j][k] = 10 #mangroves?
           else:
-              print("Bad duck! %d" %(val))
+              print("Bad! %d" %(val))
     return arr
 
 main()
