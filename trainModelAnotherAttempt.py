@@ -117,7 +117,7 @@ def main():
   for epoch in range(EPOCHS):
     try:
         model.train(True)
-        avg_loss = trainer.train_epoch(epoch)
+        avg_loss = trainer.train_epoch()
         avg_losses.append(avg_loss)
         print("epoch [%d]: loss %.3f" % (epoch+1, avg_losses[-1]))
 
@@ -290,9 +290,7 @@ class Trainer():
         self.train_loader = train_loader
         self.device = device
 
-    def train_epoch(self, epoch):
-        print("epoch:")
-        print(epoch)
+    def train_epoch(self):
         epoch_loss = 0.0
         epoch_steps = 0
         for data in tqdm.tqdm(self.train_loader):
