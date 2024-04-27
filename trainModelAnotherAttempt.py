@@ -31,9 +31,6 @@ with open('pickled_trainDict', 'rb') as myPickle:
 with open('pickled_testDict', 'rb') as myPickle:
       testDict = pickle.load(myPickle)
 
-with open('pickled_valDict', 'rb') as myPickle:
-      valDict = pickle.load(myPickle)
-
 # big help, another base of this code is: https://gist.github.com/fchollet/0830affa1f7f19fd47b06d4cf89ed44d
 #big help, the base of this code is: https://github.com/tensorflow/datasets/blob/master/tensorflow_datasets/datasets/oxford_iiit_pet/oxford_iiit_pet_dataset_builder.py
 # code base is also: https://pytorch.org/tutorials/beginner/introyt/trainingyt.html
@@ -47,14 +44,14 @@ def main():
 
   # defining some important variables
   EPOCHS = 20
-  BATCH_SIZE = 2 # I was told to start with batch-size of 8
+  BATCH_SIZE = 8 # I was told to start with batch-size of 8
   # learned how to do this conversion from: https://www.datascienceweekly.org/tutorials/convert-list-to-tensorflow-tensor
   #I modified the following code to turn my folders of images into datasets
   #https://stackoverflow.com/questions/76679892/folder-structure-for-tensorflow-image-segmentation
   
   train_dataset = CustomImageDataset(masks_dir='./LULC-pngs/train/maskTiles/', img_dir='./LULC-pngs/train/imageTiles/')
   validation_dataset = CustomImageDataset(masks_dir='./LULC-pngs/test/maskTiles/', img_dir='./LULC-pngs/test/imageTiles/')
-  #test_dataset = CustomImageDataset(masks_dir='./Subset/test/maskTiles/', img_dir='./Subset/test/imageTiles/')
+
 
 # train_loader returns batches of training data. See how train_loader is used in t
 # he Trainer class later
@@ -62,15 +59,15 @@ def main():
   validation_loader = DataLoader(dataset=validation_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, drop_last = True, pin_memory=True)
 
   #dataiter = iter(train_loader)
-  learning_rate = 1/500
-  
+  learning_rate = 1/1000000
+  print(learning_rate)
 
   device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
   print("Using device:", device)
   
   model = Model().to(device)  
 
-  opt = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+  opt = optim.Adam(model.parameters(), lr=learning_rate)
   loss_function = nn.CrossEntropyLoss()
 
   timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -88,16 +85,17 @@ def main():
         #for batch in dataiter:
         for data in tqdm.tqdm(dataiter):
             X = data[0]
+            #print(X[0,0])
             y = data[1]
 
-            X, y = X.to(device), y.to(device)
+            X, y = X.to(device).requires_grad_(requires_grad=True), y.to(device).requires_grad_(requires_grad=True)
 
             y = torch.squeeze(y, dim=1)
             
             opt.zero_grad()
             output = model(X)
             loss = loss_function(output, y)
-            loss.requires_grad = True
+            
             # solved this issue with: https://stackoverflow.com/questions/61808965/pytorch-runtimeerror-element-0-of-tensors-does-not-require-grad-and-does-not-ha
             loss.backward()
             opt.step()
@@ -280,10 +278,10 @@ class CustomImageDataset(Dataset):
         return i
 
     def __getitem__(self, idx): # idx might be necessary
-        if (self.img_labels[:19] == './LULC-pngs/test'):
-            name = testDict[idx]
-        else:
+        if (self.img_labels[:17] == './LULC-pngs/train'):
             name = trainDict[idx]
+        else:
+            name = testDict[idx]
         img_path = self.img_dir+name+'RGB.png'
         image = read_image(img_path)
         image = image.float()
