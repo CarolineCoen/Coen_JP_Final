@@ -78,7 +78,7 @@ def createURLs(cities):
     urls.close()
     coordinates.close()
 
-# this stuff is based off of a v. helpful website called screenshotone.com (I think?)
+# Citation: [4]
 def takeScreenshots(playwright, cities):
     # launch the browser
     browser = playwright.chromium.launch()

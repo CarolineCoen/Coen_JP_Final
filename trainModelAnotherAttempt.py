@@ -2,10 +2,8 @@ import pickle
 from IPython.display import clear_output
 import matplotlib.pyplot as plt
 import numpy as np
-# from City import City
 from PIL import Image
 import ssl
-# to understand the ImageDataGenerator, I used this website: https://medium.com/analytics-vidhya/write-your-own-custom-data-generator-for-tensorflow-keras-1252b64e41c3
 
 import torch
 from torch.utils.data import Dataset, IterableDataset, DataLoader, SubsetRandomSampler
@@ -31,34 +29,25 @@ with open('pickled_trainDict', 'rb') as myPickle:
 with open('pickled_testDict', 'rb') as myPickle:
       testDict = pickle.load(myPickle)
 
-# big help, another base of this code is: https://gist.github.com/fchollet/0830affa1f7f19fd47b06d4cf89ed44d
-#big help, the base of this code is: https://github.com/tensorflow/datasets/blob/master/tensorflow_datasets/datasets/oxford_iiit_pet/oxford_iiit_pet_dataset_builder.py
-# code base is also: https://pytorch.org/tutorials/beginner/introyt/trainingyt.html
-# I modified it for my project
+# Citation: [6]
+# Much of code structure taken from: [10]
 def main():
   np.random.seed(0)
   torch.manual_seed(0)
-  
-#   device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
 
   # defining some important variables
   EPOCHS = 20
-  BATCH_SIZE = 8 # I was told to start with batch-size of 8
-  # learned how to do this conversion from: https://www.datascienceweekly.org/tutorials/convert-list-to-tensorflow-tensor
-  #I modified the following code to turn my folders of images into datasets
-  #https://stackoverflow.com/questions/76679892/folder-structure-for-tensorflow-image-segmentation
+  BATCH_SIZE = 8 # I was told by my advisors to start with batch-size of 8
+ 
   
   train_dataset = CustomImageDataset(masks_dir='./LULC-pngs/train/maskTiles/', img_dir='./LULC-pngs/train/imageTiles/')
   validation_dataset = CustomImageDataset(masks_dir='./LULC-pngs/test/maskTiles/', img_dir='./LULC-pngs/test/imageTiles/')
 
 
 # train_loader returns batches of training data. See how train_loader is used in t
-# he Trainer class later
   train_loader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, drop_last = True, pin_memory=True)
   validation_loader = DataLoader(dataset=validation_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0, drop_last = True, pin_memory=True)
 
-  #dataiter = iter(train_loader)
   learning_rate = 1/1000000
   print(learning_rate)
 
@@ -78,14 +67,12 @@ def main():
 
   i = 0
   for epoch in range(EPOCHS):
-    #try:
         model.train(True)
         dataiter = iter(train_loader)
         avg_loss = 0
         #for batch in dataiter:
         for data in tqdm.tqdm(dataiter):
             X = data[0]
-            #print(X[0,0])
             y = data[1]
 
             X, y = X.to(device).requires_grad_(requires_grad=True), y.to(device).requires_grad_(requires_grad=True)
@@ -96,9 +83,7 @@ def main():
             output = model(X)
             loss = loss_function(output, y)
             
-            # solved this issue with: https://stackoverflow.com/questions/61808965/pytorch-runtimeerror-element-0-of-tensors-does-not-require-grad-and-does-not-ha
-            loss.backward()
-            opt.step()
+            # Citation: [7]
             avg_loss += loss
             i+=1
         # print out the epoch 
@@ -138,31 +123,17 @@ def main():
             model_path = 'model_{}_{}'.format(timestamp, epoch_number)
             torch.save(model.state_dict(), model_path)
 
-        #next(dataiter)
         epoch_number += 1
-    
-   # except KeyboardInterrupt:
-        # sve model and exit
-    #    print("can't wait to finish huh? well here's ur model for u")
-    #    model_path = 'model_{}_{}'.format(timestamp, epoch_number)
-    #    torch.save(model.state_dict(), model_path)
 
-
-
-# [58, 189, 234, 179, 188, 106, 81, 74, 0, 134] these are the values of the grayscale integer pixels in my grayscale masks
   
   print("The model has been trained")
-  #https://stackoverflow.com/questions/902761/saving-a-numpy-array-as-an-image to learn how to save an array as a png
-  #Aba1Array = model.predict('./LULC-pngs/test/imageTiles/Aba1_0_0_RGB.png', batch_size=1)
-  #Aba1Prediction = Image.fromarray(Aba1Array)
-  #Aba1Prediction.save("Aba1_0_0_Predicted.png")
-
   print("I made it to the end of the code!")
+  # Citation: [8]
         
 
 class Model(nn.Module):
-   # trying to make a Unet encoder/decoder model based off of this: https://towardsdatascience.com/cook-your-first-u-net-in-pytorch-b3297a844cf3
-    # this is also adapted off of the COS 324 code
+   # Citation: [9]
+   # Citation: [10]
     def __init__(self):
         super(Model, self).__init__()
 

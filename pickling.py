@@ -4,7 +4,7 @@ from PIL import Image
 import numpy as np
 import os
 
-#I got pickle help from: https://blog.hubspot.com/website/python-pickle#:~:text=To%20use%20pickle%20in%20Python,stored%20correctly%20for%20later%20access.
+# Citation: [5]
 def main():
     makePickle()
     callPickle()
@@ -53,23 +53,6 @@ def makePickle():
     for file in os.listdir('./LULC-pngs/test/imageTiles/'):
         testDict[y] = str(file[:-7])
         y+=1
-
-    #listOfCoors = open('coordinates.txt', 'r')
-    #x=0
-    #y=0
-    #for i in range(981):
-        #line = listOfCoors.readline()
-        #line = line.split()
-        #name = line[0]
-        #for j in range(19):
-            #for k in range(19):
-                #fullName = name+'_'+str(j)+'_'+str(k)
-                #if (int(name[-1]) == 1):
-                #    testDict[x] = fullName
-                #    x += 1
-                #else:
-                   # trainDict[y] = fullName
-                   # y += 1
 
     with open('pickled_trainDict', 'wb') as myPickle:
         pickle.dump(trainDict, myPickle)
